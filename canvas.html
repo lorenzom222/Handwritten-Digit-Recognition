@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>28x28 Drawing Board</title>
+    <style>
+        .board {
+            display: grid;
+            grid-template-columns: repeat(28, 10px);
+            grid-template-rows: repeat(28, 10px);
+        }
+
+        .cell {
+            width: 10px;
+            height: 10px;
+            border: 1px solid #ccc;
+            background-color: #fff;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>28x28 Board</h1>
+    <div class="board" onmousedown="mouseDown(event)" onmousemove="draw(event)" onmouseup="mouseUp(event)"
+        onmouseleave="mouseUp(event)">
+        <!-- Generate the cells dynamically using JavaScript -->
+    </div>
+    <button onclick="clearBoard()">Clear</button>
+    <button onclick="predict()">Predict</button>
+    <p id="message"></p>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script>
+        let model;
+        const board = [];
+        const mouse = { down: false };
+
+        //-------------------------------------
+        // 
+        //-------------------------------------
+        async function loadModel() {
+            // clear the model variable
+            model = undefined;
+            // load the model using a HTTPS request (where you have stored your model files)
+            model = await tf.loadLayersModel("json-model/model.json");
+        }
+
+        // loadModel();
+
+        // Create the board array and generate the cells
+        function createBoard() {
+            const boardDiv = document.querySelector(".board");
+            for (let row = 0; row < 28; row++) {
+                const newRow = [];
+                for (let col = 0; col < 28; col++) {
+                    const cell = document.createElement("div");
+                    cell.classList.add("cell");
+                    cell.setAttribute("data-row", row);
+                    cell.setAttribute("data-col", col);
+                    newRow.push(0);
+                    boardDiv.appendChild(cell);
+                }
+                board.push(newRow);
+            }
+        }
+
+        // Mouse events for drawing
+        function mouseDown(event) {
+            mouse.down = true;
+            draw(event);
+        }
+
+        function mouseUp(event) {
+            mouse.down = false;
+        }
+
+        function draw(event) {
+            if (!mouse.down) return;
+
+            const cell = event.target;
+            if (cell.classList.contains("cell")) {
+                const row = parseInt(cell.getAttribute("data-row"));
+                const col = parseInt(cell.getAttribute("data-col"));
+                board[row][col] = 1;
+                cell.style.backgroundColor = "#000";
+            }
+        }
+
+        // Clear the board and reset prediction
+        function clearBoard() {
+            const cells = document.querySelectorAll(".cell");
+            cells.forEach((cell) => {
+                const row = parseInt(cell.getAttribute("data-row"));
+                const col = parseInt(cell.getAttribute("data-col"));
+                board[row][col] = 0;
+                cell.style.backgroundColor = "#fff";
+            });
+
+            // Reset prediction message
+            document.querySelector('#message').textContent = '';
+        }
+
+        function preprocessCanvas(image) {
+            // Create an offscreen canvas
+            const offscreenCanvas = new OffscreenCanvas(28, 28);
+            const ctx = offscreenCanvas.getContext('2d');
+
+            // Draw the board onto the offscreen canvas
+            const cells = image.querySelectorAll('.cell');
+            for (let i = 0; i < cells.length; i++) {
+                const cell = cells[i];
+                const row = parseInt(cell.getAttribute('data-row'));
+                const col = parseInt(cell.getAttribute('data-col'));
+                const color = cell.style.backgroundColor;
+                ctx.fillStyle = color;
+                ctx.fillRect(col, row, 1, 1);
+            }
+
+            // Resize and preprocess the image
+            const tensor = tf.browser.fromPixels(offscreenCanvas)
+                .resizeNearestNeighbor([28, 28])
+                .mean(2)
+                .expandDims()
+                .toFloat();
+            return tensor.div(255.0);
+        }
+
+
+        async function predict() {
+            document.querySelector('#message').textContent = 'Pressed predict button';
+
+            if (!model) return;
+
+            try {
+                const canvas = document.querySelector('.board');
+                const tensor = preprocessCanvas(canvas);
+                const predictions = await model.predict(tensor);
+                const predictedClass = predictions.argMax(1).dataSync()[0];
+                const digit = predictedClass; // Define the digit variable
+                document.querySelector('#message').textContent += ` The digit is probably a ${digit}`;
+            } catch (error) {
+                alert(`An error occurred: ${error.message}`);
+            }
+        }
+
+
+
+
+        // Initialize the app
+        createBoard();
+        loadModel();
+    </script>
+</body>
+
+</html>
